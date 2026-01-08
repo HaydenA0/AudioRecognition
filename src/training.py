@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import os
 from tqdm import tqdm
 from preprocessor import preprocess_audio , load_audio
 from sklearn.svm import SVC
@@ -65,19 +66,59 @@ def plot_confusion_matrix(y_true, y_pred, labels):
 
 
 
+def load_X_labels(
+    training_data,
+    test_data,
+    X_train_path,
+    labels_train_path,
+    X_test_path,
+    labels_test_path
+) :
+    if os.path.exists(X_train_path):
+        print("Cache Hit")
+        X_train = np.load(X_train_path, allow_pickle=True)
+        labels_train = np.load(labels_train_path, allow_pickle=True)
+        X_test = np.load(X_test_path, allow_pickle=True)
+        labels_test = np.load(labels_test_path, allow_pickle=True)
+    else:
+        print("Cache Miss")
+        X_train, labels_train = extract_X_y(training_data) 
+        X_test, labels_test = extract_X_y(test_data)
+        np.save(X_train_path, X_train)
+        np.save(X_test_path, X_test)
+        np.save(labels_train_path, labels_train)
+        np.save(labels_test_path, labels_test)
+    return X_train, labels_train, X_test, labels_test
 
 
 if __name__ == "__main__" :
     # PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     PROJECT_ROOT = "/home/anasr/dev/playground/ReconnaissanceAutomatiqueDuLocuteur"
     DATASET_PATH = PROJECT_ROOT + "/data"
-    training_data, test_data = load_data(DATASET_PATH)
-    X_train, labels_train = extract_X_y(training_data)
-    X_test, labels_test = extract_X_y(test_data)
+    CACHE_PATH = PROJECT_ROOT + "/cached/"
 
+    # cache paths
+    X_train_path = CACHE_PATH + "X_train.npy"
+    labels_train_path = CACHE_PATH + "labels_train.npy"
+    X_test_path = CACHE_PATH + "X_test.npy"
+    labels_test_path = CACHE_PATH + "labels_test.npy"
+
+    # loading
+    training_data, test_data = load_data(DATASET_PATH)
+    X_train, labels_train, X_test, labels_test  =  load_X_labels(
+    training_data,
+    test_data,
+    X_train_path,
+    labels_train_path,
+    X_test_path,
+    labels_test_path
+    )
+
+    # training 
     model = train_and_evaluate_svm(X_train, labels_train, X_test, labels_test, verbose=True)
+    # evaluating
     val_preds = model.predict(X_test)
-    plot_confusion_matrix(labels_test, val_preds, model.classes_)
+    # plot_confusion_matrix(labels_test, val_preds, model.classes_)
     
 
 
