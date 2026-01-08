@@ -8,6 +8,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
+from sklearn.pipeline import Pipeline
 
 
 
@@ -38,21 +39,25 @@ def extract_X_y(df, n_mfcc=20):
 
 
 def train_and_evaluate_svm(X_train, y_train, X_test, y_test, verbose =False):
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_val_scaled = scaler.transform(X_test)
-    model = SVC(kernel='rbf', C=11.0, gamma='scale', probability=True)
+    pipeline = Pipeline([
+        ('scaler', StandardScaler()),
+        ('svc', SVC(kernel='rbf', C=10.0, gamma='scale', probability=True))
+    ])
+    pipeline.fit(
+        X_train,
+        y_train
+    )
 
-    print("Training...")
-    model.fit(X_train_scaled, y_train)
-    train_preds = model.predict(X_train_scaled)
-    val_preds = model.predict(X_val_scaled)
+    train_preds = pipeline.predict(X_train)
     train_acc = accuracy_score(y_train, train_preds)
+    val_preds = pipeline.predict(X_test)
     val_acc = accuracy_score(y_test, val_preds)
+
     if verbose :
         print(f"Training Accuracy: {train_acc:.4f}")
         print(f"Test Accuracy: {val_acc:.4f}")
-    return model
+
+    return pipeline
 
 
 def plot_confusion_matrix(y_true, y_pred, labels):
@@ -115,10 +120,7 @@ if __name__ == "__main__" :
     )
 
     # training 
-    model = train_and_evaluate_svm(X_train, labels_train, X_test, labels_test, verbose=True)
+    clf = train_and_evaluate_svm(X_train, labels_train, X_test, labels_test, verbose=True)
     # evaluating
-    val_preds = model.predict(X_test)
-    # plot_confusion_matrix(labels_test, val_preds, model.classes_)
-    
-
-
+    labels_pred = clf.predict(X_test)
+    plot_confusion_matrix(labels_test, labels_pred, clf.classes_)
