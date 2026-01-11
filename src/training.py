@@ -123,4 +123,4 @@ if __name__ == "__main__" :
     clf = train_and_evaluate_svm(X_train, labels_train, X_test, labels_test, verbose=True)
     # evaluating
     labels_pred = clf.predict(X_test)
-    plot_confusion_matrix(labels_test, labels_pred, clf.classes_)
+    #plot_confusion_matrix(labels_test, labels_pred, clf.classes_)
