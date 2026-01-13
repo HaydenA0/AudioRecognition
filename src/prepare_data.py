@@ -1,49 +1,71 @@
-from feature_engineering import PROJECT_ROOT
 import os
 import pandas as pd
-from sklearn.model_selection import train_test_split
 
-def prepare_data(dataset_path):
+
+EMOTIONS = {
+    "01": "neutral",
+    "02": "calm",
+    "03": "happy",
+    "04": "sad",
+    "05": "angry",
+    "06": "fearful",
+    "07": "disgust",
+    "08": "surprised"
+}
+
+
+STATEMENTS = {
+    "01": "Kids are talking by the door",
+    "02": "Dogs are sitting by the door"
+}
+
+def prepare_emotion_data(dataset_path):
     data = []
-    for speaker_id in os.listdir(dataset_path):
-        speaker_path = os.path.join(dataset_path, speaker_id)
-        if not os.path.isdir(speaker_path):
+    for actor_dir in os.listdir(dataset_path):
+        actor_path = os.path.join(dataset_path, actor_dir)
+        
+        if not os.path.isdir(actor_path):
             continue
-        for chapter_id in os.listdir(speaker_path):
-            chapter_path = os.path.join(speaker_path, chapter_id)
-            if not os.path.isdir(chapter_path):
-                continue
-            trans_file = f"{speaker_id}-{chapter_id}.trans.txt"
-            trans_path = os.path.join(chapter_path, trans_file)
-            if os.path.exists(trans_path):
-                with open(trans_path, 'r') as f:
-                    for line in f:
-                        parts = line.strip().split(' ', 1)
-                        file_id = parts[0]
-                        text = parts[1]
-                        audio_path = os.path.join(chapter_path, f"{file_id}.flac")
-                        
-                        data.append({
-                            "speaker_id": speaker_id,
-                            "audio_path": os.path.abspath(audio_path),
-                            "text": text
-                        })
-    
-    df = pd.DataFrame(data)
-    train_df, test_df = train_test_split(
-        df, test_size=0.20, random_state=42, stratify=df['speaker_id']
-    )
+            
 
+        for filename in os.listdir(actor_path):
+            if filename.endswith(".wav"):
+
+                parts = filename.replace(".wav", "").split("-")
+                
+                if len(parts) == 7:
+                    emotion_code = parts[2]
+                    intensity_code = parts[3]
+                    statement_code = parts[4]
+                    actor_id = parts[6]
+                    
+                    audio_path = os.path.join(actor_path, filename)
+                    
+                    data.append({
+                        "actor_id": actor_id,
+                        "emotion": EMOTIONS.get(emotion_code, "unknown"),
+                        "intensity": "normal" if intensity_code == "01" else "strong",
+                        "text": STATEMENTS.get(statement_code, "unknown"),
+                        "audio_path": os.path.abspath(audio_path)
+                    })
+
+    df = pd.DataFrame(data)
+    
+
+    test_actors = ['21', '22', '23', '24']
+    
+    train_df = df[~df['actor_id'].isin(test_actors)]
+    test_df = df[df['actor_id'].isin(test_actors)]
     
     return train_df, test_df
 
-
-if __name__ == "__main__" :
+if __name__ == "__main__":
     PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    DATASET_PATH = PROJECT_ROOT + "/data/LibriSpeech/dev-clean/"
-    train, test = prepare_data(DATASET_PATH)
+    DATASET_PATH = os.path.join(PROJECT_ROOT, "data/EmotionData/")
 
-    train.to_csv(PROJECT_ROOT + "/data/train.csv", index=False)
-    test.to_csv(PROJECT_ROOT + "/data/test.csv", index=False)
+    train, test = prepare_emotion_data(DATASET_PATH)
 
+    train.to_csv(os.path.join(PROJECT_ROOT, "data/train.csv"), index=False)
+    test.to_csv(os.path.join(PROJECT_ROOT, "data/test.csv"), index=False)
     
+    print(f"Data preparation complete. Train size: {len(train)}, Test size: {len(test)}")
