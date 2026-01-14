@@ -34,27 +34,18 @@ def get_char_vector(y, sr):
 
 
 
+
 def get_cnn_features(audio_path, max_len=256):
-    # Load at 16kHz for consistency
     y, sr = librosa.load(audio_path, sr=16000)
     y, _ = librosa.effects.trim(y, top_db=20)
     y = librosa.util.normalize(y)
-    
-    # 1. MEL SPECTROGRAM (Instead of MFCC)
-    # n_mels=128 gives way more frequency detail
-    mel_spec = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128, n_fft=1024, hop_length=256)
-    
-    # 2. CONVERT TO DECIBELS (This is how humans hear)
-    mel_db = librosa.power_to_db(mel_spec, ref=np.max)
-    
-    # 3. PADDING / TRUNCATING
-    if mel_db.shape[1] < max_len:
-        pad_width = max_len - mel_db.shape[1]
-        mel_db = np.pad(mel_db, pad_width=((0, 0), (0, pad_width)), mode='constant')
+    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40)
+    if mfcc.shape[1] < max_len:
+        pad_width = max_len - mfcc.shape[1]
+        mfcc = np.pad(mfcc, pad_width=((0, 0), (0, pad_width)), mode='constant')
     else:
-        mel_db = mel_db[:, :max_len]
-        
-    return torch.tensor(mel_db, dtype=torch.float32)
+        mfcc = mfcc[:, :max_len]
+    return torch.tensor(mfcc, dtype=torch.float32)
 
 if __name__ == "__main__" :
     y, sr = load_audio(PROJECT_ROOT + "/data/LibriSpeech/dev-clean/1272/128104/1272-128104-0000.flac")
