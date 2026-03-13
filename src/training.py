@@ -2,13 +2,14 @@ import pandas as pd
 import numpy as np
 import os
 from tqdm import tqdm
-from preprocessor import preprocess_audio , load_audio
 from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 from sklearn.pipeline import Pipeline
+from sklearn.decomposition import PCA
+from sklearn.model_selection import GridSearchCV
 
 
 
@@ -17,48 +18,68 @@ def load_data(data_path) :
     test_data = pd.read_csv(data_path + "/test.csv")
     return training_data, test_data
 
-def extract_X_y(df, n_mfcc=20):
+def extract_X_y(df, target_column='emotion'):
     X = []
     y = []
+    
+    if len(df) == 0:
+        print("Error: The input DataFrame is empty!")
+        return np.array([]), np.array([])
+
     for index, row in tqdm(df.iterrows(), total=len(df)):
+        audio_path = row.get('audio_path')
+        label = row.get(target_column)
+        
+        if audio_path is None or label is None:
+            print(f"Error: Row {index} is missing 'audio_path' or '{target_column}'")
+            continue
+
+        if not os.path.exists(audio_path):
+            print(f"Error: File not found at {audio_path}")
+            continue
+
         try:
-            audio_path = row['audio_path']
-            speaker_label = row['speaker_id']
+            from feature_engineering import get_char_vector
+            from preprocessor import load_audio
+            
             audio, sr = load_audio(audio_path)
-            y_processed, sr_processed = preprocess_audio(audio, sr, show=False)
-            from feature_engineering import extract_features, aggregate_features
-            feat_matrix = extract_features(y_processed, sr_processed, n_mfcc=n_mfcc)
-            vector = aggregate_features(feat_matrix)
+            vector = get_char_vector(audio, sr)
+            
             X.append(vector)
-            y.append(speaker_label)
+            y.append(label)
+            
         except Exception as e:
-            print(f"Error processing {e}")
+            print(f"Error processing {audio_path}: {e}")
             continue
 
     return np.array(X), np.array(y)
 
 
-def train_and_evaluate_svm(X_train, y_train, X_test, y_test, verbose =False):
+def train_and_evaluate_svm(X_train, y_train, X_test, y_test, verbose=True):
     pipeline = Pipeline([
         ('scaler', StandardScaler()),
-        ('svc', SVC(kernel='rbf', C=10.0, gamma='scale', probability=True))
+        ('pca', PCA(n_components=0.95)), 
+        ('svc', SVC(kernel='rbf', probability=True))
     ])
-    pipeline.fit(
-        X_train,
-        y_train
-    )
+    param_grid = {
+        'svc__C': [0.1, 1, 10],
+        'svc__gamma': [0.001, 0.01, 'scale'],
+    }
 
-    train_preds = pipeline.predict(X_train)
-    train_acc = accuracy_score(y_train, train_preds)
-    val_preds = pipeline.predict(X_test)
-    val_acc = accuracy_score(y_test, val_preds)
+    grid = GridSearchCV(pipeline, param_grid, cv=5, n_jobs=-1, verbose=1)
+    grid.fit(X_train, y_train)
 
-    if verbose :
+    best_model = grid.best_estimator_
+    
+    train_acc = accuracy_score(y_train, best_model.predict(X_train))
+    val_acc = accuracy_score(y_test, best_model.predict(X_test))
+
+    if verbose:
+        print(f"Best Parameters: {grid.best_params_}")
         print(f"Training Accuracy: {train_acc:.4f}")
         print(f"Test Accuracy: {val_acc:.4f}")
 
-    return pipeline
-
+    return best_model
 
 def plot_confusion_matrix(y_true, y_pred, labels):
     fig, ax = plt.subplots(figsize=(10, 10))
@@ -96,31 +117,44 @@ def load_X_labels(
     return X_train, labels_train, X_test, labels_test
 
 
-if __name__ == "__main__" :
     # PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if __name__ == "__main__" :
     PROJECT_ROOT = "/home/anasr/dev/playground/ReconnaissanceAutomatiqueDuLocuteur"
     DATASET_PATH = PROJECT_ROOT + "/data"
-    CACHE_PATH = PROJECT_ROOT + "/cached/"
-
-    # cache paths
+    
+    CACHE_PATH = PROJECT_ROOT + "/cached/emotion_" 
+    
     X_train_path = CACHE_PATH + "X_train.npy"
     labels_train_path = CACHE_PATH + "labels_train.npy"
     X_test_path = CACHE_PATH + "X_test.npy"
     labels_test_path = CACHE_PATH + "labels_test.npy"
 
-    # loading
+    if not os.path.exists(os.path.dirname(CACHE_PATH)):
+        os.makedirs(os.path.dirname(CACHE_PATH))
+
     training_data, test_data = load_data(DATASET_PATH)
-    X_train, labels_train, X_test, labels_test  =  load_X_labels(
-    training_data,
-    test_data,
-    X_train_path,
-    labels_train_path,
-    X_test_path,
-    labels_test_path
-    )
+
+    TARGET = 'emotion' 
+
+    if os.path.exists(X_train_path):
+        print("Cache Hit")
+        X_train = np.load(X_train_path, allow_pickle=True)
+        labels_train = np.load(labels_train_path, allow_pickle=True)
+        X_test = np.load(X_test_path, allow_pickle=True)
+        labels_test = np.load(labels_test_path, allow_pickle=True)
+    else:
+        print("Cache Miss")
+        X_train, labels_train = extract_X_y(training_data, target_column=TARGET) 
+        X_test, labels_test = extract_X_y(test_data, target_column=TARGET)
+        np.save(X_train_path, X_train)
+        np.save(X_test_path, X_test)
+        np.save(labels_train_path, labels_train)
+        np.save(labels_test_path, labels_test)
 
     # training 
     clf = train_and_evaluate_svm(X_train, labels_train, X_test, labels_test, verbose=True)
+    
     # evaluating
     labels_pred = clf.predict(X_test)
-    #plot_confusion_matrix(labels_test, labels_pred, clf.classes_)
+    
+    plot_confusion_matrix(labels_test, labels_pred, clf.classes_)
